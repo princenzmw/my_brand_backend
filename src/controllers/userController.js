@@ -2,6 +2,12 @@ import User from '../models/userModel.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 export const createUser = async (req, res) => {
     try {
         const userData = new User(req.body);
@@ -46,6 +52,10 @@ export const updateUser = async (req, res) => {
             const salt = await bcrypt.genSalt(10);
             req.body.password = await bcrypt.hash(password, salt);
         }
+        //If a new profile picture is uploaded, update the profilePic field
+        if (req.file) {
+            req.body.profilePic = "/Media/profiles/" + req.file.filename;
+        }
         const updatedUser = await User.findByIdAndUpdate(id, req.body, { new: true }).select('-password');
         res.status(200).json([{ message: "User Updated successfully" }, updatedUser]);
 
@@ -62,15 +72,28 @@ export const deleteUser = async (req, res) => {
         if (!userExists) {
             return res.status(404).json({ message: 'User not found.' });
         }
+        const deleteprofPic = async () => {
+            if (userExists.profilePic && userExists.profilePic !== "/Media/profiles/user_avatars/defaultUserProfileIcon.webp") {
+
+                const pathToPic = path.join(__dirname, '../', userExists.profilePic);
+
+                if (fs.existsSync(pathToPic)) {
+                    await fs.promises.unlink(pathToPic);
+                }
+            }
+        };
+
+        await deleteprofPic();
+
         await User.findByIdAndDelete(id);
         res.status(201).json({ message: 'User deleted successfully.' });
 
     } catch (error) {
+        console.log(error);
         res.status(500).json({ error: "Internal Server Error." });
     }
 }
 
-// ... other methods ...
 
 export const loginUser = async (req, res) => {
     try {
@@ -105,6 +128,28 @@ export const getLoggedInUser = async (req, res) => {
         }
         res.status(200).json(user);
     } catch (error) {
+        res.status(500).json({ error: "Internal Server Error." });
+    }
+}
+
+export const updateProfilePicture = async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        const userExists = await User.findById({ _id: id });
+        if (!userExists) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        if (req.file) { // If a new profile picture is uploaded, update the profilePic field
+            req.body.profilePic = "/Media/profiles/" + req.file.filename;
+        }
+
+        const updatedUserPic = await User.findByIdAndUpdate(id, { profilePic: req.body.profilePic }, { new: true }).select('-password');
+        res.status(200).json([{ message: "User Profile Picture Updated successfully" }, updatedUserPic]);
+
+    } catch (error) {
+        console.log(error);
         res.status(500).json({ error: "Internal Server Error." });
     }
 }

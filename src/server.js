@@ -26,9 +26,11 @@ mongoose.connect(MONGOURL).then(() => {
 
 app.use("/api/user", route)
 app.use("/api/blog", blgroute)
-app.use('/api/Media/blogs', express.static('Media/blogs'));
+app.use('/api/Media', express.static('Media'));
 
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Something broke!');
 });
+
+export default app;

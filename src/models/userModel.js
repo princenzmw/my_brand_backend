@@ -28,6 +28,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    profilePic: {
+        type: String,
+        default: "/Media/profiles/user_avatars/defaultUserProfileIcon.webp"
+    }
 });
 
 userSchema.pre('save', async function (next) {
@@ -42,4 +46,6 @@ userSchema.pre('save', async function (next) {
     }
 });
 
-export default mongoose.model('users', userSchema);
+const User = mongoose.model('users', userSchema);
+// export default mongoose.model('users', userSchema);
+export default User;
