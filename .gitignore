@@ -4,6 +4,7 @@ node_modules/
 # Ignore environment files
 .env
 
+package-lock.json
 # Ignore build output and cache directories
 dist/
 .cache/

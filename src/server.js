@@ -2,11 +2,17 @@ import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import route from './routes/userRoute.js';
+import rateLimit from 'express-rate-limit';
+import userRoutes from './routes/userRoute.js';
 import blgroute from './routes/blogRoute.js';
+import sklroute from './routes/skillRoute.js';
+import commentRoute from './routes/commentRoute.js';
+import messageRoute from './routes/messageRoute.js';
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: 'https://princenzmwz.netlify.app',
+}));
 
 dotenv.config(); // Load environment variables from .env file
 
@@ -24,13 +30,25 @@ mongoose.connect(MONGOURL).then(() => {
     });
 }).catch(err => console.log(err));
 
-app.use("/api/user", route)
-app.use("/api/blog", blgroute)
+// Set up a rate limit for login attempts to prevent brute force attacks
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes window
+    max: 10, // start blocking after 10 requests
+    message: 'Too many login attempts from this IP, please try again after 15 minutes'
+});
+
+app.use('/api/user/login', loginLimiter); // Apply to login route
+
+app.use("/api/user", userRoutes);
+app.use("/api/blog", blgroute);
+app.use("/api/skill", sklroute);
+app.use('/api/comments', commentRoute);
+app.use('/api/messages', messageRoute);
 app.use('/api/Media', express.static('Media'));
 
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(500).send('Something broke!');
+    res.status(500).send('Something broke! Please try again later.');
 });
 
 export default app;

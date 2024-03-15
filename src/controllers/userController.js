@@ -1,27 +1,37 @@
 import User from '../models/userModel.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const deleteOldProfilePic = async (userId) => {
+    const user = await User.findById(userId);
+    const defaultProfilePic = User.schema.paths.profilePic.default;
+    const oldProfilePicPath = path.join(__dirname, '..', user.profilePic);
+
+    if (user.profilePic !== defaultProfilePic && fs.existsSync(oldProfilePicPath)) {
+        await fs.promises.unlink(oldProfilePicPath);
+    }
+};
+
 export const createUser = async (req, res) => {
     try {
-        const userData = new User(req.body);
-        const { email } = userData;
-
-        const userExist = await User.findOne({ email })
+        const { firstName, lastName, username, phone, email, password, role } = req.body;
+        const userExist = await User.findOne({ $or: [{ email }, { username }] });
         if (userExist) {
-            return res.status(400).json({ message: 'User already exists.' });
+            return res.status(400).json({ message: 'User already exists with the given email or username.' });
         }
 
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        const userData = new User({ firstName, lastName, username, phone, email, password: hashedPassword, role });
         const savedUser = await userData.save();
-        res.status(200).json(savedUser);
-    }
-    catch (err) {
+        res.status(201).json(savedUser);
+    } catch (err) {
+        console.error("Error in createUser: ", err);
         res.status(500).json({ err: "Internal Server Error." });
     }
 }
@@ -29,12 +39,9 @@ export const createUser = async (req, res) => {
 export const fetchUsers = async (req, res) => {
     try {
         const users = await User.find();
-        if (users.length === 0) {
-            return res.status(404).json({ message: 'No users found.' });
-        }
         res.status(200).json(users);
-    }
-    catch (err) {
+    } catch (err) {
+        console.error("Error in Getting Users: ", err);
         res.status(500).json({ err: "Internal Server Error." });
     }
 }
@@ -42,58 +49,37 @@ export const fetchUsers = async (req, res) => {
 export const updateUser = async (req, res) => {
     try {
         const id = req.params.id;
-        const { password } = req.body;
-        const userExists = await User.findById({ _id: id });
-        if (!userExists) {
-            return res.status(404).json({ message: 'User not found.' });
-        }
-        // If the password is being updated, hash the new password before saving
-        if (password) {
-            const salt = await bcrypt.genSalt(10);
-            req.body.password = await bcrypt.hash(password, salt);
-        }
-        //If a new profile picture is uploaded, update the profilePic field
-        if (req.file) {
-            req.body.profilePic = "/Media/profiles/" + req.file.filename;
-        }
-        const updatedUser = await User.findByIdAndUpdate(id, req.body, { new: true }).select('-password');
-        res.status(200).json([{ message: "User Updated successfully" }, updatedUser]);
+        const updates = req.body;
 
+        if (req.file) {
+            await deleteOldProfilePic(id);
+            updates.profilePic = "/Media/profiles/" + req.file.filename;
+        }
+
+        if (updates.password) {
+            const salt = await bcrypt.genSalt(10);
+            updates.password = await bcrypt.hash(updates.password, salt);
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(id, updates, { new: true }).select('-password');
+        res.status(200).json({ message: "User Updated successfully", updatedUser });
     } catch (error) {
-        console.log(error);
+        console.error("Error in updating User: ", error);
         res.status(500).json({ error: "Internal Server Error." });
     }
-}
+};
 
 export const deleteUser = async (req, res) => {
     try {
         const id = req.params.id;
-        const userExists = await User.findById({ _id: id });
-        if (!userExists) {
-            return res.status(404).json({ message: 'User not found.' });
-        }
-        const deleteprofPic = async () => {
-            if (userExists.profilePic && userExists.profilePic !== "/Media/profiles/user_avatars/defaultUserProfileIcon.webp") {
-
-                const pathToPic = path.join(__dirname, '../', userExists.profilePic);
-
-                if (fs.existsSync(pathToPic)) {
-                    await fs.promises.unlink(pathToPic);
-                }
-            }
-        };
-
-        await deleteprofPic();
-
+        await deleteOldProfilePic(id);
         await User.findByIdAndDelete(id);
-        res.status(201).json({ message: 'User deleted successfully.' });
-
+        res.status(200).json({ message: 'User deleted successfully.' });
     } catch (error) {
-        console.log(error);
+        console.error("Error in deleteUser: ", error);
         res.status(500).json({ error: "Internal Server Error." });
     }
-}
-
+};
 
 export const loginUser = async (req, res) => {
     try {
@@ -116,9 +102,10 @@ export const loginUser = async (req, res) => {
 
         res.status(200).json({ token });
     } catch (err) {
+        console.error("Error in Login: ", err);
         res.status(500).json({ err: "Internal Server Error." });
     }
-}
+};
 
 export const getLoggedInUser = async (req, res) => {
     try {
@@ -128,6 +115,7 @@ export const getLoggedInUser = async (req, res) => {
         }
         res.status(200).json(user);
     } catch (error) {
+        console.error("Error in getting current logged user: ", error);
         res.status(500).json({ error: "Internal Server Error." });
     }
 }
@@ -136,23 +124,19 @@ export const updateProfilePicture = async (req, res) => {
     try {
         const id = req.params.id;
 
-        const userExists = await User.findById({ _id: id });
-        if (!userExists) {
-            return res.status(404).json({ message: 'User not found.' });
+        if (req.file) {
+            await deleteOldProfilePic(id);
+            const profilePicPath = "/Media/profiles/" + req.file.filename;
+            const updatedUserPic = await User.findByIdAndUpdate(id, { profilePic: profilePicPath }, { new: true }).select('-password');
+            res.status(200).json({ message: "User Profile Picture Updated successfully", updatedUserPic });
+        } else {
+            res.status(400).json({ error: "No profile picture provided." });
         }
-
-        if (req.file) { // If a new profile picture is uploaded, update the profilePic field
-            req.body.profilePic = "/Media/profiles/" + req.file.filename;
-        }
-
-        const updatedUserPic = await User.findByIdAndUpdate(id, { profilePic: req.body.profilePic }, { new: true }).select('-password');
-        res.status(200).json([{ message: "User Profile Picture Updated successfully" }, updatedUserPic]);
-
     } catch (error) {
-        console.log(error);
+        console.error("Error in updating user profilePic: ", error);
         res.status(500).json({ error: "Internal Server Error." });
     }
-}
+};
 
 export const logoutUser = (req, res) => {
     // Inform the client to delete the token
