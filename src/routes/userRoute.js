@@ -5,18 +5,18 @@ import { fetchUsers, createUser, loginUser, updateUser, deleteUser, getLoggedInU
 import { auth } from '../middleware/userAuthMiddleware.js';
 import upload from '../middleware/userAuthMiddleware.js';
 
-const route = express.Router();
+const router = express.Router();
 
 // Function to handle validation errors
 const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return res.status(400).send({ errors: errors.array() });
     }
     next();
 };
 
-route.post('/register', [
+router.post('/register', [
     body('firstName').not().isEmpty().withMessage('First name is required'),
     body('lastName').not().isEmpty().withMessage('Last name is required'),
     body('username').not().isEmpty().withMessage('Username is required')
@@ -42,47 +42,43 @@ route.post('/register', [
     handleValidationErrors
 ], createUser);
 
-route.post('/login', [
+router.post('/login', [
     body('email').isEmail().withMessage('Invalid email address'),
     body('password').not().isEmpty().withMessage('Password is required'),
     handleValidationErrors
 ], loginUser);
 
-route.get('/getAllUsers', fetchUsers);
+router.get('/getAllUsers', fetchUsers);
 
-route.put('/update/:id', [
+router.put('/update/:id', [
     param('id').isMongoId().withMessage('Invalid user ID'),
     body('username').optional().custom(async (value, { req }) => {
-        if (value) {
-            const user = await User.findOne({ username: value });
-            if (user && user._id.toString() !== req.params.id) {
-                return Promise.reject('Username already exists');
-            }
+        const user = await User.findOne({ username: value });
+        if (user && user._id.toString() !== req.params.id) {
+            return Promise.reject('Username already exists');
         }
     }),
     body('email').optional().isEmail().withMessage('Invalid email address').custom(async (value, { req }) => {
-        if (value) {
-            const user = await User.findOne({ email: value.toLowerCase() });
-            if (user && user._id.toString() !== req.params.id) {
-                return Promise.reject('Email already exists');
-            }
+        const user = await User.findOne({ email: value.toLowerCase() });
+        if (user && user._id.toString() !== req.params.id) {
+            return Promise.reject('Email already exists');
         }
     }),
     handleValidationErrors
 ], auth, upload.single('profilePic'), updateUser);
 
-route.delete('/delete/:id', [
+router.delete('/delete/:id', [
     param('id').isMongoId().withMessage('Invalid user ID'),
     handleValidationErrors
 ], auth, deleteUser);
 
-route.get('/me', auth, getLoggedInUser);
+router.get('/me', auth, getLoggedInUser);
 
-route.put('/updateProfilePic/:id', [
+router.put('/updateProfilePic/:id', [
     param('id').isMongoId().withMessage('Invalid user ID'),
     handleValidationErrors
 ], auth, upload.single('profilePic'), updateProfilePicture);
 
-route.post('/logout', logoutUser);
+router.post('/logout', logoutUser);
 
-export default route;
+export default router;
