@@ -10,8 +10,19 @@ import commentRoute from './routes/commentRoute.js';
 import messageRoute from './routes/messageRoute.js';
 
 const app = express();
+// app.use(cors({
+//     origin: 'https://princenzmwz.netlify.app',
+// }));
+const allowedOrigins = ['https://princenzmwz.netlify.app', 'http://127.0.0.1:5500'];
+
 app.use(cors({
-    origin: 'https://princenzmwz.netlify.app',
+    origin: function (origin, callback) {
+        if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    }
 }));
 
 dotenv.config(); // Load environment variables from .env file
