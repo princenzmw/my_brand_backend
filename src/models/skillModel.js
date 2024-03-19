@@ -6,16 +6,20 @@ const skillSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    image: String,
+    image: {
+        type: String,
+        required: true
+    },
     description: {
         type: String,
         required: true
     },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    }
-});
+    author: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+}, { timestamps: true });
 
 // Compile our model
 const Skill = mongoose.model('Skill', skillSchema);
