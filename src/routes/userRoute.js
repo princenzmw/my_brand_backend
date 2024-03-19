@@ -1,3 +1,4 @@
+import User from '../models/userModel.js';
 import express from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { fetchUsers, createUser, loginUser, updateUser, deleteUser, getLoggedInUser, updateProfilePicture, logoutUser } from '../controllers/userController.js';
