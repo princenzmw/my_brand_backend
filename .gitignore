@@ -12,3 +12,4 @@ dist/
 .nuxt/
 out/
 # package-lock.json
+coverage/
