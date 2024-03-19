@@ -1,47 +1,48 @@
 import User from '../models/userModel.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { v2 as cloudinary } from 'cloudinary';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_PROFILE_PIC = "/Media/profiles/user_avatars/defaultUserProfileIcon.webp";
+const DEFAULT_PROFILE_PIC = "https://res.cloudinary.com/dm7fqrcv7/image/upload/v1710810617/Media/profiles/avatar/ajparwuedre2uc0varnu.webp";
+const DEFAULT_PROFILE_PIC_PUBLIC_ID = "Media/profiles/avatar/ajparwuedre2uc0varnu";
 
-const deleteOldProfilePic = async (userId, oldProfilePicPath) => {
-    const user = await User.findById(userId);
-
-    if (user.profilePic !== DEFAULT_PROFILE_PIC) {
+const deleteOldProfilePic = async (oldProfilePicPublicId) => {
+    if (oldProfilePicPublicId) {
         try {
-            const fullPath = path.join(__dirname, '..', '..', oldProfilePicPath);
-            await fs.promises.unlink(fullPath);
+            await cloudinary.uploader.destroy(oldProfilePicPublicId);
         } catch (error) {
-            if (error.code !== 'ENOENT') { //the file does not exist
-                throw error;
-            }
-            console.log({ message: `Could not delete old image file: ${error.message}` });
+            console.error(`Could not delete old image on Cloudinary: ${error.message}`);
         }
     }
 };
 
 export const createUser = async (req, res) => {
     try {
-        const { firstName, lastName, username, phone, email, password, role } = req.body;
-        const userExist = await User.findOne({ $or: [{ email }, { username }] });
+        const { firstName, lastName, username, phone, email, password } = req.body;
+        const userExist = await User.findOne({ $or: [{ email: email.toLowerCase() }, { username: username.toLowerCase() }] });
         if (userExist) {
-            return res.status(400).send({ message: 'User already exists with the given email or username.' });
+            return res.status(400).send({ error: 'User already exists with the given email or username.' });
         }
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
-        const userData = new User({ firstName, lastName, username, phone, email, password: hashedPassword, role });
-        const savedUser = await userData.save();
-        res.status(201).send(savedUser);
+        const newUser = new User({
+            firstName,
+            lastName,
+            username: username.toLowerCase(),
+            phone,
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            profilePic: DEFAULT_PROFILE_PIC,
+            profilePicPublicId: DEFAULT_PROFILE_PIC_PUBLIC_ID
+        });
+        const savedUser = await newUser.save();
+        res.status(201).send({ user: savedUser.toObject({ getters: true, virtuals: false }) });
     } catch (err) {
         console.error("Error in createUser: ", err);
-        res.status(500).send({ err: "Internal Server Error." });
+        res.status(500).send({ error: "Internal Server Error." });
     }
-}
+};
 
 export const fetchUsers = async (req, res) => {
     try {
@@ -49,7 +50,7 @@ export const fetchUsers = async (req, res) => {
         res.status(200).send(users);
     } catch (err) {
         console.error("Error in Getting Users: ", err);
-        res.status(500).send({ err: "Internal Server Error." });
+        res.status(500).send({ error: "Internal Server Error." });
     }
 }
 
@@ -59,25 +60,36 @@ export const updateUser = async (req, res) => {
         const updates = req.body;
         const user = await User.findById(id);
 
-        if (req.file) {
-            const oldProfPicPath = user.profilePic;
-            const newProfilePicPath = "/Media/profiles/" + req.file.filename;
+        if (!user) {
+            return res.status(404).send({ error: 'User not found.' });
+        }
 
-            if (oldProfPicPath && oldProfPicPath !== DEFAULT_PROFILE_PIC) {
-                await deleteOldProfilePic(id, oldProfPicPath);
+        if (req.file && user.profilePicPublicId !== DEFAULT_PROFILE_PIC_PUBLIC_ID) {
+            await deleteOldProfilePic(user.profilePicPublicId);
+        }
+
+        // Update user fields
+        Object.keys(updates).forEach((updateField) => {
+            if (updateField !== 'password') {
+                user[updateField] = updates[updateField];
             }
-            updates.profilePic = newProfilePicPath;
+        });
+
+        if (req.file) {
+            user.profilePic = req.file.path;
+            user.profilePicPublicId = req.file.public_id;
         }
 
         if (updates.password) {
             const salt = await bcrypt.genSalt(10);
-            updates.password = await bcrypt.hash(updates.password, salt);
+            user.password = await bcrypt.hash(updates.password, salt);
         }
 
-        const updatedUser = await User.findByIdAndUpdate(id, updates, { new: true }).select('-password');
-        res.status(200).send({ message: "User Updated successfully", updatedUser });
+        await user.save();
+
+        res.status(200).send({ message: "User updated successfully", user: user.toObject({ getters: true, virtuals: false }) });
     } catch (error) {
-        console.error("Error in updating User: ", error);
+        console.error("Error in updateUser: ", error);
         res.status(500).send({ error: "Internal Server Error." });
     }
 };
@@ -88,12 +100,11 @@ export const deleteUser = async (req, res) => {
         const user = await User.findById(id);
 
         if (!user) {
-            return res.status(404).send({ message: 'User not found.' });
+            return res.status(404).send({ error: 'User not found.' });
         }
 
-
-        if (user.profilePic && user.profilePic !== DEFAULT_PROFILE_PIC) {
-            await deleteOldProfilePic(id, user.profilePic);
+        if (user.profilePicPublicId && user.profilePicPublicId !== DEFAULT_PROFILE_PIC_PUBLIC_ID) {
+            await deleteOldProfilePic(user.profilePicPublicId);
         }
 
         await User.findByIdAndDelete(id);
@@ -110,12 +121,12 @@ export const loginUser = async (req, res) => {
         const { email, password } = req.body;
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(400).send({ message: 'Invalid credentials.' });
+            return res.status(400).send({ error: 'Invalid credentials.' });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(400).send({ message: 'Invalid credentials.' });
+            return res.status(400).send({ error: 'Invalid credentials.' });
         }
 
         const token = jwt.sign(
@@ -127,7 +138,7 @@ export const loginUser = async (req, res) => {
         res.status(200).send({ token });
     } catch (err) {
         console.error("Error in Login: ", err);
-        res.status(500).send({ err: "Internal Server Error." });
+        res.status(500).send({ error: "Internal Server Error." });
     }
 };
 
@@ -135,7 +146,7 @@ export const getLoggedInUser = async (req, res) => {
     try {
         const user = await User.findById(req.user._id).select('-password');
         if (!user) {
-            return res.status(404).send({ message: 'User not found.' });
+            return res.status(404).send({ error: 'User not found.' });
         }
         res.status(200).send(user);
     } catch (error) {
@@ -146,23 +157,34 @@ export const getLoggedInUser = async (req, res) => {
 
 export const updateProfilePicture = async (req, res) => {
     try {
-        const id = req.params.id;
+        const userId = req.params.id;
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).send({ error: 'User not found.' });
+        }
 
         if (req.file) {
-            const newProfilePicPath = "/Media/profiles/" + req.file.filename;
-            await deleteOldProfilePic(id, newProfilePicPath);
-            const updatedUserPic = await User.findByIdAndUpdate(id, { profilePic: newProfilePicPath }, { new: true }).select('-password');
-            res.status(200).send({ message: "User Profile Picture Updated successfully", updatedUserPic });
+            // Check if the current picture is not the default one before deleting
+            if (user.profilePicPublicId && user.profilePicPublicId !== DEFAULT_PROFILE_PIC_PUBLIC_ID) {
+                await cloudinary.uploader.destroy(user.profilePicPublicId);
+            }
+
+            // Update the user with the new image URL and public ID from Cloudinary
+            user.profilePic = req.file.path;
+            user.profilePicPublicId = req.file.public_id;
+            await user.save();
+
+            res.status(200).send({ message: "Profile picture updated successfully", user });
         } else {
             res.status(400).send({ error: "No profile picture provided." });
         }
     } catch (error) {
-        console.error("Error in updating user profilePic: ", error);
+        console.error("Error in updating profile picture: ", error);
         res.status(500).send({ error: "Internal Server Error." });
     }
 };
 
 export const logoutUser = (req, res) => {
-    // Inform the client to delete the token
     res.status(200).send({ message: 'Logout successful. Please delete the token on the client side.' });
 }

@@ -16,7 +16,8 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true,
         unique: true,
-        trim: true
+        trim: true,
+        lowercase: true
     },
     phone: {
         type: String,
@@ -24,7 +25,8 @@ const userSchema = new mongoose.Schema({
         trim: true,
         validate: {
             validator: function (v) {
-                return validator.isMobilePhone(v);
+                // Validate phone numbers for all locales
+                return validator.isMobilePhone(v, 'any', { strictMode: false });
             },
             message: props => `${props.value} is not a valid phone number!`
         }
@@ -46,7 +48,11 @@ const userSchema = new mongoose.Schema({
     },
     profilePic: {
         type: String,
-        default: "/Media/profiles/user_avatars/defaultUserProfileIcon.webp"
+        default: null // Default set to null, handle default image logic in the controller
+    },
+    profilePicPublicId: {
+        type: String,
+        default: null // Default set to null, handle default public ID logic in the controller
     },
     role: {
         type: String,
@@ -65,6 +71,13 @@ const userSchema = new mongoose.Schema({
 
 userSchema.virtual('fullName').get(function () {
     return `${this.firstName} ${this.lastName}`;
+});
+
+userSchema.pre('save', async function (next) {
+    // Ensure usernames and emails are saved in lowercase
+    this.username = this.username.toLowerCase();
+    this.email = this.email.toLowerCase();
+    next();
 });
 
 userSchema.index({ username: 1 }, { unique: true });

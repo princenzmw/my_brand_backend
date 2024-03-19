@@ -1,19 +1,9 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/userModel.js';
 import multer from 'multer';
-import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const uploadDirectory = path.join(__dirname, '..', '..', 'Media', 'profiles');
-
-// Ensure the upload directory exists
-if (!fs.existsSync(uploadDirectory)) {
-  fs.mkdirSync(uploadDirectory, { recursive: true });
-}
 
 // Token authentication middleware
 export const auth = async (req, res, next) => {
@@ -32,17 +22,16 @@ export const auth = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error("Error in auth middleware: ", error);
-    res.status(401).send({ error: 'Please authenticate (Use a valid token).' });
+    res.status(401).send({ error: 'Please authenticate.' });
   }
 };
 
 // Admin role checking middleware
 export const admin = (req, res, next) => {
-  if (req.user.role === 'admin') {
+  if (req.user && req.user.role === 'admin') {
     next();
   } else {
-    return res.status(403).send({ error: 'User is not an admin.' });
+    return res.status(403).send({ error: 'User is not authorized to perform this action.' });
   }
 };
 
@@ -54,14 +43,20 @@ const imageFileFilter = (req, file, cb) => {
   cb(null, true);
 };
 
+// Cloudinary storage for multer
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'profiles',
+    allowedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+    format: async (req, file) => 'png', // Save files as 'png' for consistency
+    public_id: (req, file) => 'computed-filename-using-request'
+  },
+});
+
 // Multer configuration for file uploads
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDirectory,
-    filename: (req, file, cb) => {
-      cb(null, uuidv4() + path.extname(file.originalname));
-    },
-  }),
+  storage: storage,
   fileFilter: imageFileFilter,
   limits: {
     fileSize: 1024 * 1024 * 5 // Limit file size to 5MB

@@ -1,5 +1,4 @@
 import express from 'express';
-import User from '../models/userModel.js';
 import { body, param, validationResult } from 'express-validator';
 import { fetchUsers, createUser, loginUser, updateUser, deleteUser, getLoggedInUser, updateProfilePicture, logoutUser } from '../controllers/userController.js';
 import { auth } from '../middleware/userAuthMiddleware.js';
@@ -21,7 +20,7 @@ router.post('/register', [
     body('lastName').not().isEmpty().withMessage('Last name is required'),
     body('username').not().isEmpty().withMessage('Username is required')
         .custom(async (value) => {
-            const user = await User.findOne({ username: value });
+            const user = await User.findOne({ username: value.toLowerCase() });
             if (user) {
                 return Promise.reject('Username already exists');
             }
@@ -53,7 +52,7 @@ router.get('/getAllUsers', fetchUsers);
 router.put('/update/:id', [
     param('id').isMongoId().withMessage('Invalid user ID'),
     body('username').optional().custom(async (value, { req }) => {
-        const user = await User.findOne({ username: value });
+        const user = await User.findOne({ username: value.toLowerCase() });
         if (user && user._id.toString() !== req.params.id) {
             return Promise.reject('Username already exists');
         }
