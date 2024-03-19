@@ -25,8 +25,7 @@ const userSchema = new mongoose.Schema({
         trim: true,
         validate: {
             validator: function (v) {
-                // Validate phone numbers for all locales
-                return validator.isMobilePhone(v, 'any', { strictMode: false });
+                return /^(\+\d{1,4})?[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}(\sext.\d{1,5})?$/.test(v);
             },
             message: props => `${props.value} is not a valid phone number!`
         }
