@@ -1,31 +1,25 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path'
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
+import { fetchSkills, fetchSkill, createSkill, updateSkill, deleteSkill } from '../controllers/skillController.js';
+import auth from '../middleware/authentication.js';
 
-import { fetchSkills, createSkill, updateSkill, deleteSkill } from '../controllers/skillController.js';
-
-const sklroute = express.Router();
-
-// Multer configurations
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, '/Media/skills')
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'skillImages',
+        format: async (req, file) => 'png',
     },
-    filename: function (req, file, cb) {
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
 });
+const upload = multer({ storage });
 
-const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 1024 * 1024 * 10  // Limit to 10MB
-    }
-});
+const skillRoute = express.Router();
 
-sklroute.post('/create', upload.single('image'), createSkill);
-sklroute.get('/getAllSkills', fetchSkills);
-sklroute.put('/update/:id', upload.single('image'), updateSkill);
-sklroute.delete('/delete/:id', deleteSkill);
+skillRoute.get('/', fetchSkills);
+skillRoute.get('/:id', fetchSkill);
+skillRoute.post('/create', auth, upload.single('image'), createSkill);
+skillRoute.put('/update/:id', auth, upload.single('image'), updateSkill);
+skillRoute.delete('/delete/:id', auth, deleteSkill);
 
-export default sklroute;
+export default skillRoute;

@@ -1,11 +1,6 @@
 import Blog from '../models/blogModel.js';
-import fs from 'fs';
-import User from '../models/userModel.js';
-
-const isAdmin = async (userId) => {
-    const user = await User.findById(userId);
-    return user && user.role === 'admin';
-};
+import cloudinary from 'cloudinary';
+import { isAdmin } from '../middleware/authentication.js';
 
 export const fetchBlog = async (req, res) => {
     try {
@@ -42,55 +37,57 @@ export const fetchBlogs = async (req, res) => {
 }
 
 export const createBlog = async (req, res) => {
-    if (!await isAdmin(req.user.userId)) {
-        return res.status(403).json({ message: 'Access denied. Only admins can create blogs.' });
-    }
-
     try {
         const { title, content } = req.body;
-        const image = req.file ? req.file.path : "default/path";
-        const author = req.user.userId; // Assuming you have middleware to set req.user
+        const author = req.user.userId;
 
-        const newBlog = new Blog({
-            title,
-            image,
-            content,
-            author
-        });
+        if (!title || title.length < 5 || !content || content.length < 15) {
+            return res.status(400).json({ message: 'Please provide a title with at least 5 characters and content with at least 15 characters.' });
+        }
 
-        const savedBlog = await newBlog.save(); // Save the new blog to the database
+        let image;
+        if (req.file) image = req.file.filename;
+
+        const newBlog = new Blog({ title, image, content, author });
+
+        const savedBlog = await newBlog.save();
 
         res.status(201).json({ message: 'Blog added successfully!', blog: savedBlog });
     } catch (error) {
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ message: 'Invalid blog data', error: error.message });
+        }
         res.status(500).json({ message: 'An error occurred while adding the blog', error: error.message });
     }
 }
 
 export const updateBlog = async (req, res) => {
-    if (!await isAdmin(req.user.userId)) {
+    const { userId } = req.user;
+    const { id } = req.params;
+    const { title, content } = req.body;
+    const newImage = req.file ? req.file.filename : null;
+
+    if (!(await isAdmin(userId))) {
         return res.status(403).json({ message: 'Access denied. Only admins can update blogs.' });
     }
 
     try {
-        const id = req.params.id;
-        const { title, content } = req.body;
-        const newImage = req.file ? req.file.path : null;
-
         const blog = await Blog.findById(id);
         if (!blog) {
             return res.status(404).json({ message: 'Blog not found.' });
         }
 
-        if (newImage && blog.image !== "default/path") {
-            if (fs.existsSync(blog.image)) {
-                await fs.promises.unlink(blog.image);
+        if (newImage && blog.image) {
+            let result = await cloudinary.uploader.destroy(blog.image); // Delete old image
+            if (result.error) {
+                return res.status(500).json({ message: 'Failed to delete old image.' });
             }
         }
 
         const updatedData = {
             title: title || blog.title,
             content: content || blog.content,
-            image: newImage || blog.image
+            image: newImage ? newImage : blog.image
         };
 
         const updatedBlog = await Blog.findByIdAndUpdate(id, updatedData, { new: true, runValidators: true });
@@ -113,8 +110,9 @@ export const deleteBlog = async (req, res) => {
             return res.status(404).json({ message: 'Blog not found.' });
         }
 
-        if (blog.image !== "default/path" && fs.existsSync(blog.image)) {
-            await fs.promises.unlink(blog.image);
+        let result = await cloudinary.uploader.destroy(blog.image); // Corrected
+        if (result.error) {
+            return res.status(500).json({ message: 'Failed to delete image from cloud.', error: result.error });
         }
 
         await Blog.findByIdAndDelete(id);

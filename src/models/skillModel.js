@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 
-// A schema for the skill
 const skillSchema = new mongoose.Schema({
     title: {
         type: String,
@@ -10,7 +9,7 @@ const skillSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    description: {
+    content: {
         type: String,
         required: true
     },
@@ -19,8 +18,10 @@ const skillSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
+    categories: [{
+        type: String,
+    }]
 }, { timestamps: true });
 
-// Compile our model
 const Skill = mongoose.model('Skill', skillSchema);
 export default Skill;

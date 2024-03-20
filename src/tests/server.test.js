@@ -3,6 +3,10 @@ import mongoose from 'mongoose';
 import app from '../server.js';
 import User from '../models/userModel.js';
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+
+dotenv.config();
+const uri = process.env.DB_URI;
 
 const request = supertest(app);
 
@@ -19,13 +23,20 @@ const userData = {
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '24h' });
 };
-beforeEach(async () => {
-  await User.deleteMany(); // Clear the user collection before each test
-}, 10000);
+beforeAll(async () => {
+  await mongoose.connect(uri, {
+    useUnifiedTopology: true,
+    useNewUrlParser: true
+  })
+  console.log("Connected to DB");
+});
 
 describe('User API tests', () => {
   it('POST /register should create a new user', async () => {
     const response = await request.post('/api/user/register').send(userData);
+    // Log complete response object
+    console.log(response);
+
     expect(response.statusCode).toBe(201);
     expect(response.body).toHaveProperty('_id');
   });
